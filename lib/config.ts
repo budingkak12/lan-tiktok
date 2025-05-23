@@ -4,7 +4,6 @@
 
 // 应用模式
 export enum AppMode {
-  DEMO = "demo", // 演示模式：使用模拟数据
   DEV = "dev", // 开发模式：连接真实后端
 }
 
@@ -22,7 +21,7 @@ export interface AppConfig {
 
 // 默认配置
 const defaultConfig: AppConfig = {
-  mode: AppMode.DEMO, // 默认使用演示模式
+  mode: AppMode.DEV, // 默认使用开发模式
   apiBaseUrl: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000",
   mediaBaseUrl: process.env.NEXT_PUBLIC_MEDIA_URL || "http://localhost:8000",
   debug: process.env.NODE_ENV === "development",
@@ -88,26 +87,16 @@ export function resetConfig(): AppConfig {
  * 检查是否使用演示模式
  */
 export function isDemoMode(): boolean {
-  return currentConfig.mode === AppMode.DEMO
-}
-
-/**
- * 检查是否使用开发模式
- */
-export function isDevMode(): boolean {
   return currentConfig.mode === AppMode.DEV
-}
-
-/**
- * 切换到演示模式
- */
-export function switchToDemoMode(): AppConfig {
-  return updateConfig({ mode: AppMode.DEMO })
 }
 
 /**
  * 切换到开发模式
  */
 export function switchToDevMode(): AppConfig {
+  // Since DEV is the only mode, this function doesn't change the mode.
+  // It could still be used to re-apply DEV settings if needed,
+  // but its primary purpose of mode switching is now moot.
+  // For now, it ensures the mode is DEV.
   return updateConfig({ mode: AppMode.DEV })
 }

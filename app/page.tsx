@@ -10,7 +10,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { checkApiAvailability } from "@/lib/api"
 import { toast } from "@/components/ui/use-toast"
 import ConfigManager from "@/components/config-manager"
-import { initConfig, isDevMode, isDemoMode, updateConfig, AppMode } from "@/lib/config"
+import { initConfig, isDevMode, updateConfig, AppMode } from "@/lib/config" // Removed isDemoMode
 
 export default function HomePage() {
   const [isSetupComplete, setIsSetupComplete] = useState(false)
@@ -23,13 +23,9 @@ export default function HomePage() {
     initConfig()
   }, [])
 
-  // 检查 API 可用性（仅在开发模式下）
+  // 检查 API 可用性
   const checkApi = async () => {
-    if (isDemoMode()) {
-      setIsApiAvailable(false)
-      return
-    }
-
+    // Removed isDemoMode() check, API check will always run
     setIsCheckingApi(true)
     try {
       // 添加超时处理
@@ -43,21 +39,24 @@ export default function HomePage() {
       setIsApiAvailable(available)
 
       if (!available) {
-        console.log("API server is not available, switching to demo mode")
-        // 自动切换到演示模式
-        updateConfig({ mode: AppMode.DEMO })
-
+        console.log("API server is not available.")
+        // Removed updateConfig({ mode: AppMode.DEMO })
+        // Removed toast message for demo mode switch
         toast({
-          title: "已切换到演示模式",
-          description: "无法连接到后端服务器，已自动切换到演示模式。",
-          variant: "warning",
+          title: "后端连接失败",
+          description: "无法连接到后端服务器。请检查配置或确保服务器正在运行。",
+          variant: "destructive", // Changed to destructive
         })
       }
     } catch (error) {
       console.error("Error checking API:", error)
       setIsApiAvailable(false)
-      // 自动切换到演示模式
-      updateConfig({ mode: AppMode.DEMO })
+      // Removed updateConfig({ mode: AppMode.DEMO })
+      toast({ // Added a generic error toast
+        title: "API 检查错误",
+        description: "检查后端连接时发生错误。",
+        variant: "destructive",
+      })
     } finally {
       setIsCheckingApi(false)
     }
@@ -70,17 +69,21 @@ export default function HomePage() {
 
   // 获取媒体数据
   useEffect(() => {
-    if (isApiAvailable !== null || isDemoMode()) {
+    if (isApiAvailable === true) { // Changed condition
       fetchMediaItems()
     }
   }, [fetchMediaItems, isApiAvailable])
 
   // 如果有媒体项，设置为已完成设置
   useEffect(() => {
-    if (mediaItems.length > 0 || isDemoMode()) {
+    if (mediaItems.length > 0 && isApiAvailable === true) { // Changed condition
       setIsSetupComplete(true)
     }
-  }, [mediaItems])
+    // If API is not available, setup is not complete, unless we define setup differently
+    // For now, if API is not available, mediaItems will be empty, and this won't run.
+    // If API becomes unavailable after setup, this doesn't reset isSetupComplete.
+    // This might need further thought based on desired UX for API becoming unavailable later.
+  }, [mediaItems, isApiAvailable])
 
   const handleSetupComplete = () => {
     setIsSetupComplete(true)
@@ -94,7 +97,8 @@ export default function HomePage() {
   }
 
   // 显示 API 检查中
-  if (isApiAvailable === null && isCheckingApi && isDevMode()) {
+  // isDevMode() is always true now, so can be removed from condition
+  if (isApiAvailable === null && isCheckingApi) { 
     return (
       <div className="flex items-center justify-center min-h-screen bg-muted/40">
         <div className="w-full max-w-md p-6 bg-background rounded-lg shadow-lg text-center">
@@ -106,30 +110,37 @@ export default function HomePage() {
     )
   }
 
-  // 显示后端错误消息（仅在开发模式下）
-  if (error && !isApiAvailable && isDevMode()) {
+  // 显示后端错误消息
+  // isDevMode() is always true now
+  // Show this if there's an error AND (API is not available OR setup is not complete, indicating a connection/config problem)
+  if (error && (isApiAvailable === false || !isSetupComplete) ) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-muted/40">
         <div className="w-full max-w-md p-6 bg-background rounded-lg shadow-lg">
           <Alert variant="destructive" className="mb-6">
             <AlertCircle className="h-4 w-4" />
             <AlertTitle>连接错误</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
+            <AlertDescription>{error || "无法连接到后端或加载初始数据。"}</AlertDescription>
           </Alert>
 
           <div className="space-y-4">
-            <p className="text-sm">请确保后端服务器正在运行，并且配置正确：</p>
+            <p className="text-sm">请确保后端服务器正在运行，并且配置正确。</p>
 
             <Button onClick={handleRetry} className="w-full">
               重试连接
             </Button>
-
+            
+            {/* Simplified message as there's no demo mode to switch to */}
             <p className="text-sm text-muted-foreground">
-              如果问题持续存在，请检查您是否已使用提供的启动脚本启动后端服务器，或切换到演示模式。
+              如果问题持续存在，请检查后端服务日志和网络连接。
             </p>
 
-            <Button variant="outline" onClick={() => setIsSetupComplete(false)} className="w-full">
-              返回设置
+            <Button variant="outline" onClick={() => {
+              setIsSetupComplete(false); // Go back to setup form
+              setIsApiAvailable(null); // Allow API check to re-run implicitly or explicitly
+              clearError();
+            }} className="w-full">
+              检查配置/返回设置
             </Button>
           </div>
         </div>
@@ -137,8 +148,9 @@ export default function HomePage() {
     )
   }
 
-  // 在开发模式下显示设置表单
-  if (!isSetupComplete && !isFetching && isDevMode()) {
+  // 显示设置表单
+  // isDevMode() is always true now
+  if (!isSetupComplete && !isFetching) { 
     return <SetupForm onComplete={handleSetupComplete} />
   }
 
