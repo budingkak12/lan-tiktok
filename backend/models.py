@@ -51,6 +51,13 @@ class Folder(Base):
     
     # Relationships
     subfolders = relationship("Folder", 
-                             backref=ForeignKey("folders.id"),
+                             backref="parent_folder", # Corrected: Use a string name for the backref
                              remote_side=[id])
     media_items = relationship("Media", back_populates="folder")
+
+class Configuration(Base):
+    __tablename__ = "configuration"
+
+    id = Column(Integer, primary_key=True, autoincrement=True, index=True)
+    key = Column(String, unique=True, index=True)
+    value = Column(String)

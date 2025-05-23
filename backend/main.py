@@ -1,4 +1,5 @@
-from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, Path
+from fastapi import FastAPI, Depends, HTTPException, UploadFile, File, Form, Query, Path, Header
+from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
@@ -8,6 +9,7 @@ import shutil
 from datetime import datetime
 import uuid
 import urllib.parse
+import mimetypes
 
 from . import models, schemas, crud
 from .database import engine, SessionLocal, get_db
@@ -218,6 +220,150 @@ async def upload_file(
     )
     
     return crud.create_media_item(db, media_item=media_create)
+
+# Utility function for file streaming
+def iterfile(file_path: str, chunk_size: int = 1024*1024):  # 1MB chunks
+    with open(file_path, mode="rb") as file_like:
+        while chunk := file_like.read(chunk_size):
+            yield chunk
+
+# Media Content Endpoint
+@app.get("/api/media/content/{media_id}")
+async def get_media_content(
+    media_id: str = Path(...), 
+    range_header: Optional[str] = Header(None, alias="Range"),
+    db: Session = Depends(get_db)
+):
+    media_id = urllib.parse.unquote(media_id)
+    db_media = crud.get_media_item(db, media_id=media_id)
+    if not db_media:
+        raise HTTPException(status_code=404, detail="Media not found")
+
+    config = crud.get_configuration(db, key="media_root_path")
+    if not config or not config.value:
+        raise HTTPException(status_code=500, detail="Media root path not configured.")
+
+    actual_file_path = os.path.join(config.value, db_media.path.lstrip('/'))
+
+    if not os.path.exists(actual_file_path):
+        raise HTTPException(status_code=404, detail="File not found on server")
+
+    media_type_header, _ = mimetypes.guess_type(actual_file_path)
+    if media_type_header is None:
+        media_type_header = "application/octet-stream"
+    
+    file_size = db_media.size
+
+    if db_media.type == "video" and file_size > 5 * 1024 * 1024: # 5MB threshold for streaming
+        if range_header:
+            try:
+                range_value = range_header.replace("bytes=", "")
+                start_str, end_str = range_value.split("-")
+                start = int(start_str)
+                end = int(end_str) if end_str else file_size - 1
+
+                if start >= file_size or end >= file_size or start > end:
+                    raise HTTPException(status_code=416, detail="Requested range not satisfiable")
+
+                content_length = (end - start) + 1
+                
+                def ranged_file_generator(file_path: str, start: int, end: int, chunk_size: int = 1024*1024):
+                    with open(file_path, 'rb') as file:
+                        file.seek(start)
+                        pos = file.tell()
+                        while pos <= end:
+                            read_size = min(chunk_size, end - pos + 1)
+                            chunk = file.read(read_size)
+                            if not chunk:
+                                break
+                            yield chunk
+                            pos = file.tell()
+                
+                headers = {
+                    "Content-Range": f"bytes {start}-{end}/{file_size}",
+                    "Accept-Ranges": "bytes",
+                    "Content-Length": str(content_length),
+                    "Content-Type": media_type_header,
+                }
+                return StreamingResponse(
+                    ranged_file_generator(actual_file_path, start, end), 
+                    status_code=206, 
+                    headers=headers
+                )
+            except ValueError: # Handle invalid range header format
+                pass # Fallback to full file streaming if range parsing fails
+
+        # Fallback to full file streaming if no range header or if parsing failed
+        headers = {
+            "Accept-Ranges": "bytes", # Inform client that range requests are supported
+            "Content-Type": media_type_header,
+            "Content-Length": str(file_size) # Recommended for full responses too
+        }
+        return StreamingResponse(iterfile(actual_file_path), media_type=media_type_header, headers=headers)
+    else:
+        return FileResponse(actual_file_path, media_type=media_type_header, filename=db_media.title or os.path.basename(actual_file_path))
+
+# Configuration Endpoints
+@app.post("/api/config/media_path", response_model=schemas.Configuration)
+def set_media_path(config_in: schemas.ConfigurationCreate, db: Session = Depends(get_db)):
+    if config_in.key != "media_root_path":
+        raise HTTPException(status_code=400, detail="Invalid configuration key. Only 'media_root_path' is allowed.")
+    return crud.create_or_update_configuration(db, key=config_in.key, value=config_in.value)
+
+@app.get("/api/config/media_path", response_model=schemas.Configuration)
+def get_media_path(db: Session = Depends(get_db)):
+    config = crud.get_configuration(db, key="media_root_path")
+    if not config:
+        raise HTTPException(status_code=404, detail="Media root path not configured.")
+    return config
+
+# Media scanning endpoint
+@app.post("/api/scan")
+def scan_media(db: Session = Depends(get_db)):
+    config = crud.get_configuration(db, key="media_root_path")
+    if not config or not config.value:
+        raise HTTPException(status_code=400, detail="Media root path not configured. Please set it via POST /api/config/media_path.")
+    
+    path = os.path.normpath(config.value)
+        
+    # Validate path exists
+    if not os.path.exists(path):
+        raise HTTPException(status_code=400, detail=f"Configured media root path does not exist: {path}")
+    
+    # Validate path is a directory
+    if not os.path.isdir(path):
+        raise HTTPException(status_code=400, detail=f"Configured media root path is not a directory: {path}")
+    
+    try:
+        result = scan_media_directory(path, db)
+        return {"message": f"Scanned {result['media_count']} media files and {result['folder_count']} folders from {path}"}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/adjacent", response_model=Optional[schemas.MediaItem])
+def get_adjacent_media(
+    id: str = Query(..., description="ID of the current media item"),
+    dir: str = Query(..., description="Direction: 'next' or 'prev'"),
+    sort_by: Optional[str] = Query("created_at_desc", description="Sort order to determine adjacency (e.g., 'created_at_desc')"),
+    db: Session = Depends(get_db)
+):
+    # URL decode id
+    decoded_id = urllib.parse.unquote(id)
+
+    if dir not in ["next", "prev"]:
+        raise HTTPException(status_code=400, detail="Invalid direction. Must be 'next' or 'prev'.")
+
+    adjacent_media = crud.get_adjacent_media_item(db, current_media_id=decoded_id, direction=dir, sort_by=sort_by)
+    
+    if not adjacent_media:
+        # Return 404 if no adjacent item is found in that direction
+        # Ensure the response is valid JSON, even for 404, by not returning a body here explicitly.
+        # FastAPI handles turning the HTTPException into a proper JSON response.
+        raise HTTPException(status_code=404, detail=f"No {dir} media item found.")
+
+    return adjacent_media
 
 if __name__ == "__main__":
     import uvicorn

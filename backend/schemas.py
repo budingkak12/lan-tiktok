@@ -15,6 +15,20 @@ class Tag(TagBase):
     class Config:
         orm_mode = True
 
+# Configuration schemas
+class ConfigurationBase(BaseModel):
+    key: str
+    value: str
+
+class ConfigurationCreate(ConfigurationBase):
+    pass
+
+class Configuration(ConfigurationBase):
+    id: int
+
+    class Config:
+        orm_mode = True
+
 # Media schemas
 class MediaItemBase(BaseModel):
     type: str  # "image" or "video"

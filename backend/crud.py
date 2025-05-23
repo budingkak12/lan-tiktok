@@ -1,5 +1,5 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import desc, func
+from sqlalchemy import desc, func, or_, and_
 from typing import List, Optional
 import os
 
@@ -163,3 +163,57 @@ def get_folder_breadcrumb(db: Session, folder_id: str):
             break
     
     return breadcrumb
+
+# Configuration CRUD operations
+def get_configuration(db: Session, key: str) -> Optional[models.Configuration]:
+    return db.query(models.Configuration).filter(models.Configuration.key == key).first()
+
+def create_or_update_configuration(db: Session, key: str, value: str) -> models.Configuration:
+    db_config = get_configuration(db, key)
+    if db_config:
+        db_config.value = value
+    else:
+        db_config = models.Configuration(key=key, value=value)
+        db.add(db_config)
+    db.commit()
+    db.refresh(db_config)
+    return db_config
+
+def get_adjacent_media_item(db: Session, current_media_id: str, direction: str, sort_by: str = "created_at_desc") -> Optional[models.Media]:
+    current_media_item = db.query(models.Media).filter(models.Media.id == current_media_id).first()
+    if not current_media_item:
+        return None
+
+    query = db.query(models.Media)
+
+    if sort_by == "created_at_desc": # Default: newer first
+        if direction == "next": # "Next" means older than current
+            query = query.filter(
+                or_(
+                    models.Media.created_at < current_media_item.created_at,
+                    and_(models.Media.created_at == current_media_item.created_at, models.Media.id < current_media_item.id) # Ensure consistent tie-breaking
+                )
+            ).order_by(models.Media.created_at.desc(), models.Media.id.desc())
+        elif direction == "prev": # "Prev" means newer than current
+            query = query.filter(
+                or_(
+                    models.Media.created_at > current_media_item.created_at,
+                    and_(models.Media.created_at == current_media_item.created_at, models.Media.id > current_media_item.id)
+                )
+            ).order_by(models.Media.created_at.asc(), models.Media.id.asc())
+    # Add other sort_by conditions if necessary (e.g., "title_asc", etc.)
+    # For now, "created_at_desc" is the primary one to implement.
+    else: # Default or fallback for other sort_by values
+        # Simple ID-based navigation if sort_by is not 'created_at_desc' or unknown
+        # This might not align with user's visual sort order, but is a fallback
+        # Assuming IDs are sortable (like UUIDs, though not strictly sequential for created_at order)
+        # For UUIDs, '<' and '>' might not give a meaningful order related to creation time.
+        # This fallback is very basic.
+        if direction == "next":
+            # This finds an item with a lexicographically smaller ID
+            query = query.filter(models.Media.id < current_media_item.id).order_by(models.Media.id.desc())
+        else: # prev
+            # This finds an item with a lexicographically larger ID
+            query = query.filter(models.Media.id > current_media_item.id).order_by(models.Media.id.asc())
+
+    return query.first()
