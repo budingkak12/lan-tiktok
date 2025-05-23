@@ -82,15 +82,12 @@ def scan_media_directory(root_path: str, db: Session) -> Dict[str, Any]:
             
             if is_media_file(file_path):
                 try:
-                    # Convert backslashes to forward slashes for web paths
-                    # 使用 urllib.parse.quote 来处理中文和特殊字符
-                    rel_path = os.path.relpath(file_path, '.')
-                    web_path = "/" + rel_path.replace('\\', '/')
+                    # Calculate path relative to the root_path
+                    rel_path = os.path.relpath(file_path, root_path)
+                    # Ensure forward slashes for web compatibility
+                    web_path = rel_path.replace('\\', '/')
                     
-                    # 检查文件是否已存在于数据库中
-                    db_media = db.query(models.Media).filter(models.Media.path == web_path).first  '/')
-                    
-                    # 检查文件是否已存在于数据库中
+                    # Check if the media item already exists in the database
                     db_media = db.query(models.Media).filter(models.Media.path == web_path).first()
                     
                     if not db_media:

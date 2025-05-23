@@ -124,17 +124,23 @@ export function getMediaUrl(path: string): string {
   // 如果是绝对 URL，直接返回
   if (path.startsWith("http")) return path
 
-  // 确保路径以斜杠开头
-  const cleanPath = path.startsWith("/") ? path : `/${path}`
-
   // 从配置获取媒体 URL
   const config = getConfig()
   let baseUrl = config.mediaBaseUrl
+
+  // Ensure baseUrl doesn't end with a slash
+  if (baseUrl.endsWith('/')) {
+    baseUrl = baseUrl.slice(0, -1);
+  }
+  // Ensure baseUrl has a scheme
   if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
     baseUrl = `http://${baseUrl}`
   }
 
-  return `${baseUrl}${cleanPath}`
+  // Ensure relativePath doesn't start with a slash (it shouldn't based on previous backend changes)
+  const relativePath = path.startsWith('/') ? path.slice(1) : path;
+
+  return `${baseUrl}/user_media_files/${relativePath}`;
 }
 
 // Media API functions
@@ -436,5 +442,26 @@ export async function checkApiAvailability(): Promise<boolean> {
   } catch (error) {
     console.error("API availability check error:", error)
     return false
+  }
+}
+
+// Get backend configured media path
+export async function getBackendConfiguredMediaPath(): Promise<{ media_path: string | null; message?: string }> {
+  // If in demo mode, we assume it's "configured" for demo purposes
+  if (isDemoMode()) {
+    return { media_path: "demo_mode_path" };
+  }
+  try {
+    // The backend returns { "media_path": "path" } or { "message": "not set" }
+    const response = await apiRequest<{ media_path?: string; message?: string }>("/api/config/media_path");
+    if (response && typeof response.media_path === 'string' && response.media_path.trim() !== '') {
+      return { media_path: response.media_path };
+    }
+    // If media_path is not present or empty, or if there's a message (like "not set")
+    return { media_path: null, message: response.message };
+  } catch (error) {
+    console.error("Failed to get backend configured media path:", error);
+    // In case of an error, treat as not configured
+    return { media_path: null, message: error instanceof Error ? error.message : "Error fetching path" };
   }
 }
