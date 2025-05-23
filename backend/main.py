@@ -12,8 +12,10 @@ import urllib.parse
 from . import models, schemas, crud
 from .database import engine, SessionLocal, get_db
 from .media_scanner import scan_media_directory
+from .config_manager import save_media_path, load_media_path
 
 app = FastAPI(title="LAN TikTok Album API")
+app.state.media_path = None # Initialize media_path
 
 # 配置 CORS - 更新为更严格的配置
 origins = [
@@ -41,8 +43,18 @@ models.Base.metadata.create_all(bind=engine)
 # Mount media directory for serving files
 @app.on_event("startup")
 async def startup_event():
-    os.makedirs("media", exist_ok=True)
-    app.mount("/media", StaticFiles(directory="media"), name="media")
+    # os.makedirs("media", exist_ok=True) # This was for uploaded media, potentially no longer needed if /media mount is removed
+    # app.mount("/media", StaticFiles(directory="media"), name="media") # Removed as per subtask instructions
+    
+    # Load media path from config
+    app.state.media_path = load_media_path()
+    if app.state.media_path and os.path.isdir(app.state.media_path):
+        app.mount("/user_media_files", StaticFiles(directory=app.state.media_path), name="user_media_files")
+        print(f"Serving user media from: {app.state.media_path} at /user_media_files")
+    elif app.state.media_path: # Path is configured but not a valid directory
+        print(f"User media path is configured to '{app.state.media_path}' but it is not a valid directory. Static files for user media not served.")
+    else: # Path is not configured
+        print("User media path not configured. Static files for user media not served. Please configure via POST /api/scan or GET /api/config/media_path.")
 
 # API endpoints
 @app.get("/")
@@ -160,25 +172,47 @@ def search_by_tags(tag_ids: List[str] = Query(None), db: Session = Depends(get_d
 
 # Media scanning endpoint
 @app.post("/api/scan")
-def scan_media(path: str = Form(...), db: Session = Depends(get_db)):
+def scan_media_path(new_path: Optional[str] = Form(None), db: Session = Depends(get_db)):
+    current_path = app.state.media_path
+    
+    if new_path:
+        new_path = os.path.normpath(new_path)
+        if not os.path.isdir(new_path):
+            raise HTTPException(status_code=400, detail=f"Provided path is not a valid directory: {new_path}")
+        save_media_path(new_path)
+        app.state.media_path = new_path
+        current_path = new_path
+        print(f"Media path saved and updated to: {current_path}. A server restart may be required for changes to static file serving to take effect.")
+
+    if not current_path:
+        raise HTTPException(status_code=400, detail="Media path is not configured. Provide a 'new_path' to scan and save.")
+
+    if not os.path.isdir(current_path):
+        raise HTTPException(status_code=400, detail=f"Configured media path is not a valid directory: {current_path}. Please provide a valid 'new_path'.")
+
     try:
-        # Normalize path to handle different OS path formats
-        path = os.path.normpath(path)
-        
-        # Validate path exists
-        if not os.path.exists(path):
-            raise HTTPException(status_code=400, detail=f"Path does not exist: {path}")
-        
-        # Validate path is a directory
-        if not os.path.isdir(path):
-            raise HTTPException(status_code=400, detail=f"Path is not a directory: {path}")
-        
-        result = scan_media_directory(path, db)
-        return {"message": f"Scanned {result['media_count']} media files and {result['folder_count']} folders"}
+        result = scan_media_directory(current_path, db)
+        return {"message": f"Scanned {result['media_count']} media files and {result['folder_count']} folders from {current_path}"}
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+# Configuration endpoint to get/set media_path
+@app.get("/api/config/media_path")
+async def manage_media_path(new_path: Optional[str] = Query(None)):
+    if new_path:
+        new_path = os.path.normpath(new_path)
+        if not os.path.isdir(new_path):
+            raise HTTPException(status_code=400, detail=f"Provided path is not a valid directory: {new_path}")
+        save_media_path(new_path)
+        app.state.media_path = new_path
+        return {"message": f"Media path saved and updated to: {app.state.media_path}. A server restart may be required for changes to static file serving to take effect."}
+    
+    if app.state.media_path:
+        return {"media_path": app.state.media_path}
+    else:
+        return {"message": "Media path is not set. You can set it by providing the 'new_path' query parameter."}
 
 # Upload endpoint
 @app.post("/api/upload/{folder_id}")
