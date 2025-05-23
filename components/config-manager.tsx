@@ -20,43 +20,18 @@ export default function ConfigManager() {
     setConfig(getConfig())
   }, [])
 
-  // 切换模式
-  const toggleMode = () => {
-    const newMode = config.mode === AppMode.DEMO ? AppMode.DEV : AppMode.DEMO
-    const newConfig = updateConfig({ mode: newMode })
-    setConfig(newConfig)
-
-    if (newMode === AppMode.DEV) {
-      toast({
-        title: "已切换到开发模式",
-        description: "正在尝试连接后端服务器...",
-      })
-
-      // 在切换到开发模式时，自动检查 API 可用性
-      setTimeout(() => {
-        checkApiAvailability().then((available) => {
-          if (!available) {
-            toast({
-              title: "警告",
-              description: "无法连接到后端服务器，但仍将保持开发模式。",
-              variant: "warning",
-            })
-          } else {
-            toast({
-              title: "连接成功",
-              description: "已成功连接到后端服务器。",
-              variant: "default",
-            })
-          }
-        })
-      }, 500)
-    } else {
-      toast({
-        title: "已切换到演示模式",
-        description: "使用模拟数据，无需后端服务器。",
-      })
-    }
-  }
+  // 切换模式 - This is now effectively obsolete as DEMO mode is removed.
+  // The UI for this will be removed. If kept, it would only confirm DEV mode.
+  // For now, let's comment it out or make it a no-op to avoid errors if called.
+  // const toggleMode = () => {
+  //   // const newMode = config.mode === AppMode.DEMO ? AppMode.DEV : AppMode.DEMO; // DEMO is gone
+  //   const newConfig = updateConfig({ mode: AppMode.DEV }); // Always DEV
+  //   setConfig(newConfig);
+  //   toast({
+  //     title: "应用模式",
+  //     description: "应用当前以开发模式运行 (连接真实后端)。",
+  //   });
+  // };
 
   // 更新 API URL
   const updateApiUrl = (url: string) => {
@@ -130,22 +105,23 @@ export default function ConfigManager() {
         <div className="py-2 px-1">
           <div className="flex items-center gap-2 text-sm">
             <div
-              className={`w-2 h-2 rounded-full ${config.mode === AppMode.DEMO ? "bg-yellow-500" : "bg-green-500"}`}
+              className={`w-2 h-2 rounded-full ${config.mode === AppMode.DEV ? "bg-green-500" : "bg-red-500"}`} {/* Assuming DEV is green */}
             ></div>
-            <span>当前模式: {config.mode === AppMode.DEMO ? "演示模式" : "开发模式"}</span>
+            <span>当前模式: 开发模式</span> {/* Always DEV mode */}
           </div>
         </div>
 
         <div className="py-6 space-y-6">
-          <div className="flex items-center justify-between">
+          {/* Mode toggle switch is removed as DEMO mode is no longer available */}
+          {/* <div className="flex items-center justify-between">
             <div className="space-y-0.5">
               <Label htmlFor="mode-toggle">应用模式</Label>
               <p className="text-sm text-muted-foreground">
-                {config.mode === AppMode.DEMO ? "演示模式（使用模拟数据）" : "开发模式（连接真实后端）"}
+                开发模式（连接真实后端）
               </p>
             </div>
-            <Switch id="mode-toggle" checked={config.mode === AppMode.DEV} onCheckedChange={toggleMode} />
-          </div>
+            <Switch id="mode-toggle" checked={config.mode === AppMode.DEV} onCheckedChange={toggleMode} disabled />
+          </div> */}
 
           <div className="space-y-2">
             <Label htmlFor="api-url">API 基础 URL</Label>

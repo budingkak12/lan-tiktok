@@ -1,14 +1,11 @@
 // API client for interacting with the backend
 import type { MediaItem, Tag, Folder, SortingMode } from "./types"
-import { mockMediaItems, mockTags, mockFolders, getSortedMediaItems, filterMediaItemsByTags } from "./mock-data"
-import { getConfig, isDemoMode } from "./config"
+// Removed mock-data imports
+import { getConfig } from "./config" // Removed isDemoMode import
 
 // Helper function for API requests
 async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
-  // 如果是演示模式，直接使用模拟数据
-  if (isDemoMode()) {
-    return getMockData<T>(endpoint)
-  }
+  // Removed demo mode check block
 
   // 确保 endpoint 不是一个绝对路径
   const cleanEndpoint = endpoint.startsWith("/") ? endpoint : `/${endpoint}`
@@ -62,42 +59,7 @@ async function apiRequest<T>(endpoint: string, options: RequestInit = {}): Promi
   }
 }
 
-// 根据 endpoint 获取模拟数据
-function getMockData<T>(endpoint: string): T {
-  if (getConfig().debug) {
-    console.log(`Getting mock data for: ${endpoint}`)
-  }
-
-  // 媒体列表
-  if (endpoint.startsWith("/api/media") && !endpoint.includes("/tags/")) {
-    const sortBy = endpoint.includes("sort_by=") ? endpoint.split("sort_by=")[1].split("&")[0] : SortingMode.RECENT
-    return getSortedMediaItems(sortBy as SortingMode) as unknown as T
-  }
-
-  // 标签列表
-  if (endpoint === "/api/tags") {
-    return mockTags as unknown as T
-  }
-
-  // 根文件夹
-  if (endpoint === "/api/folders") {
-    return mockFolders.filter((f) => f.parentId === null) as unknown as T
-  }
-
-  // 标签搜索
-  if (endpoint.startsWith("/api/search/tags")) {
-    const tagIds = endpoint.includes("tag_ids=")
-      ? endpoint
-          .split("tag_ids=")[1]
-          .split("&")
-          .map((id) => decodeURIComponent(id))
-      : []
-    return filterMediaItemsByTags(tagIds) as unknown as T
-  }
-
-  // 默认返回空数组
-  return [] as unknown as T
-}
+// Removed getMockData<T> function entirely
 
 /**
  * 编码路径参数，确保中文和特殊字符正确处理
@@ -116,10 +78,7 @@ function encodePathParam(param: string): string {
 export function getMediaUrl(path: string): string {
   if (!path) return "/placeholder.svg"
 
-  // 如果是演示模式，使用模拟路径
-  if (isDemoMode()) {
-    return path
-  }
+  // Removed demo mode check for path
 
   // 如果是绝对 URL，直接返回
   if (path.startsWith("http")) return path
@@ -143,10 +102,7 @@ export async function getMediaItems(sortBy: SortingMode): Promise<MediaItem[]> {
     return await apiRequest<MediaItem[]>(`/api/media?sort_by=${sortBy}`)
   } catch (error) {
     console.error("Failed to get media items:", error)
-    // 如果是演示模式，返回模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      return getSortedMediaItems(sortBy)
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -157,10 +113,7 @@ export async function searchMediaByTags(tagIds: string[]): Promise<MediaItem[]> 
     return await apiRequest<MediaItem[]>(`/api/search/tags?tag_ids=${tagIdsEncoded}`)
   } catch (error) {
     console.error("Failed to search media by tags:", error)
-    // 如果是演示模式，返回模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      return filterMediaItemsByTags(tagIds)
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -175,16 +128,7 @@ export async function toggleMediaLike(mediaId: string, liked: boolean): Promise<
     })
   } catch (error) {
     console.error("Failed to toggle like:", error)
-    // 如果是演示模式，更新模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      const media = mockMediaItems.find((m) => m.id === mediaId)
-      if (media) {
-        media.liked = liked
-        if (liked) media.likeCount++
-        else if (media.likeCount > 0) media.likeCount--
-      }
-      return media || mockMediaItems[0]
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -199,14 +143,7 @@ export async function toggleMediaFavorite(mediaId: string, favorited: boolean): 
     })
   } catch (error) {
     console.error("Failed to toggle favorite:", error)
-    // 如果是演示模式，更新模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      const media = mockMediaItems.find((m) => m.id === mediaId)
-      if (media) {
-        media.favorited = favorited
-      }
-      return media || mockMediaItems[0]
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -218,14 +155,7 @@ export async function deleteMediaItem(mediaId: string): Promise<void> {
     })
   } catch (error) {
     console.error("Failed to delete media:", error)
-    // 如果是演示模式，更新模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      const index = mockMediaItems.findIndex((m) => m.id === mediaId)
-      if (index !== -1) {
-        mockMediaItems.splice(index, 1)
-      }
-      return
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -240,15 +170,7 @@ export async function addTagToMedia(mediaId: string, tagId: string): Promise<{ m
     )
   } catch (error) {
     console.error("Failed to add tag to media:", error)
-    // 如果是演示模式，更新模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      const media = mockMediaItems.find((m) => m.id === mediaId)
-      const tag = mockTags.find((t) => t.id === tagId)
-      if (media && tag && !media.tags.some((t) => t.id === tagId)) {
-        media.tags.push(tag)
-      }
-      return { message: "Tag added to media" }
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -263,14 +185,7 @@ export async function removeTagFromMedia(mediaId: string, tagId: string): Promis
     )
   } catch (error) {
     console.error("Failed to remove tag from media:", error)
-    // 如果是演示模式，更新模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      const media = mockMediaItems.find((m) => m.id === mediaId)
-      if (media) {
-        media.tags = media.tags.filter((t) => t.id !== tagId)
-      }
-      return { message: "Tag removed from media" }
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -281,10 +196,7 @@ export async function getTags(): Promise<Tag[]> {
     return await apiRequest<Tag[]>("/api/tags")
   } catch (error) {
     console.error("Failed to get tags:", error)
-    // 如果是演示模式，返回模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      return mockTags
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -297,15 +209,7 @@ export async function createTag(name: string): Promise<Tag> {
     })
   } catch (error) {
     console.error("Failed to create tag:", error)
-    // 如果是演示模式，更新模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      const newTag = {
-        id: `tag${mockTags.length + 1}`,
-        name,
-      }
-      mockTags.push(newTag)
-      return newTag
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -316,10 +220,7 @@ export async function getRootFolders(): Promise<Folder[]> {
     return await apiRequest<Folder[]>("/api/folders")
   } catch (error) {
     console.error("Failed to get root folders:", error)
-    // 如果是演示模式，返回模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      return mockFolders.filter((f) => f.parentId === null)
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -329,10 +230,7 @@ export async function getSubfolders(folderId: string): Promise<Folder[]> {
     return await apiRequest<Folder[]>(`/api/folders/${encodePathParam(folderId)}/subfolders`)
   } catch (error) {
     console.error("Failed to get subfolders:", error)
-    // 如果是演示模式，返回模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      return mockFolders.filter((f) => f.parentId === folderId)
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -342,12 +240,7 @@ export async function getFolderMedia(folderId: string): Promise<MediaItem[]> {
     return await apiRequest<MediaItem[]>(`/api/folders/${encodePathParam(folderId)}/media`)
   } catch (error) {
     console.error("Failed to get folder media:", error)
-    // 如果是演示模式，返回模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      const folder = mockFolders.find((f) => f.id === folderId)
-      if (!folder) return []
-      return folder.mediaItems.map((id) => mockMediaItems.find((m) => m.id === id)).filter(Boolean) as MediaItem[]
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -357,19 +250,7 @@ export async function getFolderBreadcrumb(folderId: string): Promise<Folder[]> {
     return await apiRequest<Folder[]>(`/api/folders/${encodePathParam(folderId)}/breadcrumb`)
   } catch (error) {
     console.error("Failed to get folder breadcrumb:", error)
-    // 如果是演示模式，返回模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      // 模拟面包屑
-      const breadcrumb: Folder[] = []
-      let currentFolder = mockFolders.find((f) => f.id === folderId)
-
-      while (currentFolder) {
-        breadcrumb.unshift(currentFolder)
-        currentFolder = currentFolder.parentId ? mockFolders.find((f) => f.id === currentFolder?.parentId) : null
-      }
-
-      return breadcrumb
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
@@ -383,28 +264,18 @@ export async function scanMediaDirectory(
     formData.append("path", path)
     return await apiRequest<{ message: string; media_count: number; folder_count: number }>("/api/scan", {
       method: "POST",
-      body: formData,
+      body: formData, // FormData is not JSON, Content-Type header will be set by browser
     })
   } catch (error) {
     console.error("Failed to scan media directory:", error)
-    // 如果是演示模式，返回模拟数据；否则抛出错误
-    if (isDemoMode()) {
-      return {
-        message: "模拟模式：已扫描 10 个媒体文件和 5 个文件夹",
-        media_count: 10,
-        folder_count: 5,
-      }
-    }
+    // Removed demo mode fallback
     throw error
   }
 }
 
 // 检查 API 是否可用
 export async function checkApiAvailability(): Promise<boolean> {
-  // 如果是演示模式，直接返回 false
-  if (isDemoMode()) {
-    return false
-  }
+  // Removed demo mode check
 
   try {
     const config = getConfig()
